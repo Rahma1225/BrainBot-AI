@@ -1,38 +1,79 @@
 import os
-from pymongo import MongoClient
+import uuid
 import numpy as np
-from app.config import MONGO_URI, DB_NAME, COLLECTION_NAME
+from typing import List, Dict, Tuple, Optional, Union
+from chromadb import PersistentClient
 
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
-collection = db[COLLECTION_NAME]
+# ChromaDB n'accepte que les types simples dans les métadonnées
+MetadataValue = Union[str, int, float, bool, None]
+Metadata = Dict[str, MetadataValue]
 
-def store_chunks(chunks, embeddings, metadata=None):
-    docs = []
-    for chunk, embedding in zip(chunks, embeddings):
-        doc = {
-            "content": chunk,
-            "embedding": embedding.tolist(),  # Convert numpy array to list
-            "metadata": metadata or {}
-        }
-        docs.append(doc)
-    if docs:
-        collection.insert_many(docs)
+# === 1. Chunking avec chevauchement ===
+def chunk_text(text: str, max_chars: int = 1000, overlap: int = 200) -> List[str]:
+    """Divise un texte en morceaux avec chevauchement."""
+    chunks = []
+    i = 0
+    while i < len(text):
+        chunk = text[i:i + max_chars]
+        chunks.append(chunk.strip())
+        i += max_chars - overlap
+    return chunks
 
-def retrieve_similar_chunks(query_embedding, top_n=5):
+# === 2. Recherche vectorielle dans ChromaDB ===
+def retrieve_similar_chunks(query_embedding: List[float], top_n: int = 5) -> List[Tuple[str, float]]:
+    """Recherche les chunks les plus similaires dans ChromaDB."""
+    client = PersistentClient(path="app/chroma_store")
+    collection = client.get_or_create_collection(name="documents")
+
+    results = collection.query(query_embeddings=[query_embedding], n_results=top_n)
+
+    documents = results.get("documents", [[]])
+    distances = results.get("distances", [[]])
+
+    if documents and distances and documents[0] and distances[0]:
+        return list(zip(documents[0], distances[0]))
+
+    return []
+
+# === 3. Insertion dynamique dans ChromaDB ===
+def store_chunks(
+    chunks: List[str],
+    embeddings: List[List[float]],
+    metadata: Optional[Metadata] = None
+):
     """
-    Retrieve the top-N most similar chunks from MongoDB using cosine similarity.
+    Enregistre les chunks et leurs embeddings dans ChromaDB.
+
+    Args:
+        chunks: morceaux de texte
+        embeddings: vecteurs d'embedding correspondants
+        metadata: dictionnaire avec des métadonnées simples (str, int, float, bool, None)
     """
-    # Fetch all embeddings and contents
-    docs = list(collection.find({}, {"content": 1, "embedding": 1, "_id": 0}))
-    # Filter out docs without 'embedding'
-    docs = [doc for doc in docs if "embedding" in doc]
-    if not docs:
-        return []
-    embeddings = np.array([doc["embedding"] for doc in docs])
-    # Normalize for cosine similarity
-    norm_embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
-    norm_query = query_embedding / np.linalg.norm(query_embedding)
-    similarities = np.dot(norm_embeddings, norm_query)
-    top_indices = similarities.argsort()[-top_n:][::-1]
-    return [(docs[i]["content"], similarities[i]) for i in top_indices]
+    if not chunks or len(embeddings) == 0:
+        return
+
+    if len(chunks) != len(embeddings):
+        raise ValueError("Mismatch between number of chunks and embeddings.")
+
+    client = PersistentClient(path="app/chroma_store")
+    collection = client.get_or_create_collection(name="documents")
+
+    ids = [str(uuid.uuid4()) for _ in chunks]
+
+    # Réplique les mêmes métadonnées simples pour chaque chunk
+    if metadata:
+        metadatas: List[Metadata] = [
+            {k: v for k, v in metadata.items() if isinstance(v, (str, int, float, bool)) or v is None}
+            for _ in chunks
+        ]
+    else:
+        metadatas = [{} for _ in chunks]
+
+    embeddings_array = np.array(embeddings, dtype=np.float32)
+
+    collection.add(
+        documents=chunks,
+        embeddings=embeddings_array,
+        metadatas=metadatas,  # type: ignore
+        ids=ids
+    )
