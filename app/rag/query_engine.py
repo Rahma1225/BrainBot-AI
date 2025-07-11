@@ -25,10 +25,21 @@ def answer_with_rag(question: str, similarity_threshold: float = 0.7, top_n: int
     # 4. Construire le prompt en français
     context = "\n".join(filtered_chunks)
     prompt = (
-        "Tu es un assistant intelligent. Réponds à la question suivante en te basant UNIQUEMENT sur le contexte ci-dessous :\n\n"
-        f"Contexte :\n{context}\n\n"
-        f"Question : {question}"
-    )
+    "Tu es un assistant intelligent spécialisé dans la lecture et l’analyse de documents techniques et fonctionnels (guides, procédures, manuels d’implémentation, etc.).\n"
+    "Tu dois répondre à la question ci-dessous UNIQUEMENT en te basant sur le CONTEXTE fourni.\n"
+    "Ta réponse doit être rédigée en français, claire, structurée et toujours fidèle au contenu du contexte.\n\n"
+    "📌 Règles à respecter :\n"
+    "1. Si la question contient un **code, écran, identifiant ou référence (ex : IN201000)** → indique à quoi cela correspond, avec citation ou extrait du contexte si possible.\n"
+    "2. Si la question concerne une **liste d’étapes, une procédure ou un plan structuré** → présente la réponse sous forme de **liste numérotée**, avec des **puces pour les sous-éléments**.\n"
+    "3. Si le contexte suit une **structure ou un sommaire clair** (ex : Préparation, Configuration, Initialisation...) → respecte **l’ordre exact** et **les titres** tels qu’ils apparaissent dans le texte.\n"
+    "4. Si **aucune réponse claire ne peut être déduite**, écris simplement : \"📌 Le contexte ne fournit pas cette information.\"\n"
+    "5. Ne reformule pas les titres du contexte. Utilise-les tels quels si présents.\n"
+    "6. Sois concis mais complet : ta réponse doit refléter **tout ce qui est pertinent dans le contexte**.\n\n"
+    f"📘 CONTEXTE :\n{context}\n\n"
+    f"❓ QUESTION : {question}"
+)
+
+
 
     # 5. Envoyer le prompt au modèle
     answer = ask_ollama(prompt)

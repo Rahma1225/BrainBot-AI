@@ -4,6 +4,8 @@ import docx
 import pandas as pd
 from typing import List, Dict
 from transformers import AutoTokenizer
+from app.services.text_splitter import split_into_sections 
+
 
 # Load a sentence tokenizer (you can change the model as needed)
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
@@ -49,7 +51,7 @@ def extract_chunks_from_folder(folder_path: str) -> List[Dict]:
         if not text.strip():
             continue
 
-        chunks = chunk_text(text)
+        chunks = split_into_sections(text)
         for chunk in chunks:
             data.append({
                 "text": chunk,

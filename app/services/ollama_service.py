@@ -21,7 +21,7 @@ def ask_ollama(prompt: str) -> str:
 
     try:
         print(f"🔄 Sending to Ollama at {OLLAMA_URL}/api/chat with prompt: {full_prompt}")
-        response = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=60)
+        response = httpx.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=150)
         response.raise_for_status()
         data = response.json()
         print("✅ Ollama parsed response:", data)
